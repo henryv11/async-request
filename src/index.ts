@@ -17,7 +17,7 @@ export default function request<T = unknown>(
     headers = {},
     json,
     method = 'GET',
-    path: pathArgument = '',
+    path: pathFromOptions = '',
     query = {},
     response: responseParser = _ => <T>(<unknown>_),
     timeout = 30000,
@@ -27,7 +27,7 @@ export default function request<T = unknown>(
     encoding?: BufferEncoding;
     headers?: http.OutgoingHttpHeaders;
     json?: unknown;
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'CONNECT';
     path?: string;
     query?: Record<string, string | number | (string | number)[]>;
     response?: (rawBody: string) => T | stream.Writable;
@@ -39,11 +39,11 @@ export default function request<T = unknown>(
     protocol,
     host,
     port,
-    pathname: pathURL,
-    searchParams: searchParamsURL,
+    pathname: pathFromUrl,
+    searchParams: searchParamsFromUrl,
   } = new URL(url.startsWith('http') ? url : 'http://' + url);
   const driver = driverByProtocol[<keyof typeof driverByProtocol>protocol];
-  const searchParams = new URLSearchParams(searchParamsURL);
+  const searchParams = new URLSearchParams(searchParamsFromUrl);
   const response = {
     code: -1,
     message: '',
@@ -65,7 +65,7 @@ export default function request<T = unknown>(
   }
   return new Promise<typeof response>((resolve, reject) => {
     const req = driver(
-      { host, port, path: path.join(pathURL, pathArgument), method, headers, searchParams, agent },
+      { host, port, path: path.join(pathFromUrl, pathFromOptions), method, headers, searchParams, agent },
       res => {
         function onError(error: Error) {
           res.destroy(error);
@@ -100,14 +100,12 @@ export default function request<T = unknown>(
     req.setTimeout(timeout);
     req.on('timeout', () => onError(new Error('request timed out after ' + timeout + ' ms')));
     req.on('error', onError);
-    if (method === 'GET') {
-      req.end();
-    } else if (body) {
+    if (body) {
       if (body instanceof stream.Readable) {
         stream.pipeline(body, req, error => (error ? onError(error) : req.end()));
       } else {
         if (!req.getHeader('content-length')) {
-          req.setHeader('content-length', Buffer.byteLength(<string | ArrayBuffer>body));
+          req.setHeader('content-length', Buffer.byteLength(body));
         }
         req.write(body, encoding, error => (error ? onError(error) : req.end()));
       }
