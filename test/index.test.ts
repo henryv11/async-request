@@ -1,8 +1,6 @@
 import request from '../src';
 import nock from 'nock';
 
-nock.recorder.rec({ logging: console.log });
-
 describe('node-request', () => {
   // test('works', async () => {
   //   interface ResponseBody {
@@ -43,9 +41,9 @@ describe('node-request', () => {
   // });
 
   test.only('bbb', async () => {
-    const url = 'http://test_url.com/';
+    const url = 'http://test_url.com';
     const path = '/path';
-    nock(url).get(path).reply(200, 'hello');
+    nock(url).log(console.log).get(path).reply(200, 'hello');
     const response = await request(url, { path });
     console.log(response.body);
   });
