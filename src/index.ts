@@ -32,7 +32,6 @@ export default function request<T = unknown>(
     query?: Record<string, string | number | (string | number)[]>;
     response?: (rawBody: string) => T | stream.Writable;
     timeout?: number;
-    writeStream?: NodeJS.WritableStream;
   } = {},
 ) {
   const {
