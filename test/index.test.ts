@@ -1,5 +1,5 @@
 import nock from 'nock';
-import asyncRequest, { collectToJson } from '../src';
+import asyncRequest, { jsonCollector } from '../src';
 import fs from 'fs';
 
 describe('async-request', () => {
@@ -7,7 +7,7 @@ describe('async-request', () => {
     const req = asyncRequest('https://jsonplaceholder.typicode.com/todos');
     req.end();
     const res = await req;
-    const collector = collectToJson<unknown[]>();
+    const collector = jsonCollector<unknown[]>();
     res.pipe(collector);
     const data = await collector;
     expect(Array.isArray(data)).toBe(true);
@@ -21,8 +21,7 @@ describe('async-request', () => {
     const req = asyncRequest(url);
     req.end();
     const res = await req;
-    const json = await res.json();
-    expect(json).toEqual(expectedValue);
+    expect(await res.json()).toEqual(expectedValue);
   });
 
   test('stream from file', async () => {

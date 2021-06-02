@@ -38,46 +38,44 @@ export default function asyncRequest(
     searchParams,
     agent,
   });
-  return assignPromise(
-    req,
-    new Promise<http.IncomingMessage & { json: <T>() => Promise<T>; text: () => Promise<string> }>(
-      (resolve, reject) => {
-        req.once('response', response =>
-          resolve(
-            Object.assign(response, {
-              json: <T>() => readResponseBody(response, buffer => <T>JSON.parse(buffer.toString('utf-8'))),
-              text: () => readResponseBody(response, buffer => buffer.toString('utf-8')),
-              buffer: () => readResponseBody(response, buffer => buffer),
-            }),
-          ),
-        );
-        req.once('error', reject);
-        req.once('abort', () => reject(new Error('request aborted')));
-        req.once('timeout', () => reject(new Error('request timed out')));
-      },
-    ),
-  );
+  const promise = new Promise<
+    http.IncomingMessage & { json: <T>() => Promise<T>; text: () => Promise<string>; buffer: () => Promise<Buffer> }
+  >((resolve, reject) => {
+    req.once('response', response =>
+      resolve(
+        Object.assign(response, {
+          json: <T>() => readResponseBody(response, buffer => <T>JSON.parse(buffer.toString('utf-8'))),
+          text: () => readResponseBody(response, buffer => buffer.toString('utf-8')),
+          buffer: () => readResponseBody(response, buffer => buffer),
+        }),
+      ),
+    );
+    req.once('error', reject);
+    req.once('abort', () => reject(new Error('request aborted')));
+    req.once('timeout', () => reject(new Error('request timed out')));
+  });
+  return assignPromise(req, promise);
 }
 
 async function readResponseBody<T>(res: http.IncomingMessage, parser: (buffer: Buffer) => T) {
-  const collector = collectStream<T>(parser);
+  const collector = streamCollector(parser);
   res.pipe(collector);
   return await collector;
 }
 
-export function collectToJson<T>() {
-  return collectStream<T>(buffer => JSON.parse(buffer.toString('utf-8')));
+export function jsonCollector<T>() {
+  return streamCollector<T>(buffer => JSON.parse(buffer.toString('utf-8')));
 }
 
-export function collectToText() {
-  return collectStream<string>(buffer => buffer.toString('utf-8'));
+export function textCollector() {
+  return streamCollector<string>(buffer => buffer.toString('utf-8'));
 }
 
-export function collectToBuffer() {
-  return collectStream(_ => _);
+export function bufferCollector() {
+  return streamCollector(_ => _);
 }
 
-function collectStream<T>(parser: (buffer: Buffer) => T) {
+function streamCollector<T>(parser: (buffer: Buffer) => T) {
   const buffer: Uint8Array[] = [];
   const writeStream = new stream.Writable({
     write(chunk, _, cb) {
@@ -87,12 +85,16 @@ function collectStream<T>(parser: (buffer: Buffer) => T) {
   });
   writeStream.end = (cb?: () => void) => writeStream.emit('finish', cb);
   const promise = new Promise<T>((resolve, reject) => {
-    writeStream.once('finish', () => {
-      resolve(parser(Buffer.concat(buffer)));
+    writeStream.once('finish', (cb: () => void = () => void 0) => {
+      try {
+        resolve(parser(Buffer.concat(buffer)));
+        cb();
+      } catch (error) {
+        reject(error);
+      }
     });
     writeStream.once('error', reject);
   });
-
   return assignPromise(writeStream, promise);
 }
 
