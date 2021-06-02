@@ -1,26 +1,20 @@
-import http from 'http';
-import https from 'https';
-import path from 'path';
-import stream from 'stream';
+import { Agent as HttpAgent, ClientRequest, IncomingMessage, OutgoingHttpHeaders, request as httpRequest } from 'http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'https';
+import { Writable } from 'stream';
 
+export default function asyncRequest(url: string, options?: AsyncRequestOptions): Promise<AsyncIncomingMessage>;
 export default function asyncRequest(
   url: string,
-  {
-    agent,
-    headers = {},
-    method = 'GET',
-    path: pathFromOptions = '',
-    query = {},
-  }: {
-    agent?: http.Agent | https.Agent | boolean;
-    headers?: http.OutgoingHttpHeaders;
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'CONNECT';
-    path?: string;
-    query?: Record<string, string | number | (string | number)[]>;
-  } = {},
+  options: AsyncRequestOptions | undefined,
+  isImmediate: false,
+): Promise<AsyncIncomingMessage> & ClientRequest;
+export default function asyncRequest(
+  url: string,
+  { agent, headers = {}, method = 'GET', path: basePath = '', query = {} }: AsyncRequestOptions = {},
+  isImmediate = true,
 ) {
-  const { protocol, host, port, pathname: pathFromUrl, searchParams: searchParamsFromUrl } = new URL(url);
-  const driver = protocol === 'https:' ? https.request : http.request;
+  const { protocol, host, port, pathname: path, searchParams: searchParamsFromUrl } = new URL(basePath, url);
+  const driver = protocol === 'https:' ? httpsRequest : httpRequest;
   const searchParams = new URLSearchParams(searchParamsFromUrl);
   Object.entries(query).forEach(([key, value]) => {
     if (Array.isArray(value)) {
@@ -32,52 +26,42 @@ export default function asyncRequest(
   const req = driver({
     host,
     port,
-    path: path.join(pathFromUrl, pathFromOptions),
+    path,
     method,
     headers,
     searchParams,
     agent,
   });
-  const promise = new Promise<
-    http.IncomingMessage & { json: <T>() => Promise<T>; text: () => Promise<string>; buffer: () => Promise<Buffer> }
-  >((resolve, reject) => {
-    req.once('response', response =>
+  const promise = new Promise<AsyncIncomingMessage>((resolve, reject) => {
+    req.once('response', response => {
       resolve(
         Object.assign(response, {
-          json: <T>() => readResponseBody(response, buffer => <T>JSON.parse(buffer.toString('utf-8'))),
-          text: () => readResponseBody(response, buffer => buffer.toString('utf-8')),
-          buffer: () => readResponseBody(response, buffer => buffer),
+          json: <T>() => collectResponseBody(response, buffer => <T>JSON.parse(buffer.toString('utf-8'))),
+          text: () => collectResponseBody(response, buffer => buffer.toString('utf-8')),
+          buffer: () => collectResponseBody(response, buffer => buffer),
         }),
-      ),
-    );
+      );
+    });
     req.once('error', reject);
     req.once('abort', () => reject(new Error('request aborted')));
     req.once('timeout', () => reject(new Error('request timed out')));
   });
+  if (isImmediate) {
+    req.end();
+    return promise;
+  }
   return assignPromise(req, promise);
 }
 
-async function readResponseBody<T>(res: http.IncomingMessage, parser: (buffer: Buffer) => T) {
+async function collectResponseBody<T>(res: IncomingMessage, parser: (buffer: Buffer) => T) {
   const collector = streamCollector(parser);
   res.pipe(collector);
   return await collector;
 }
 
-export function jsonCollector<T>() {
-  return streamCollector<T>(buffer => JSON.parse(buffer.toString('utf-8')));
-}
-
-export function textCollector() {
-  return streamCollector<string>(buffer => buffer.toString('utf-8'));
-}
-
-export function bufferCollector() {
-  return streamCollector(_ => _);
-}
-
 function streamCollector<T>(parser: (buffer: Buffer) => T) {
   const buffer: Uint8Array[] = [];
-  const writeStream = new stream.Writable({
+  const writeStream = new Writable({
     write(chunk, _, cb) {
       buffer.push(chunk);
       cb();
@@ -104,4 +88,18 @@ function assignPromise<T, P extends Promise<V extends infer U ? U : V>, V = unkn
   (<T & P>dest).catch = promise.catch.bind(promise);
   (<T & P>dest).finally = promise.finally.bind(promise);
   return <T & P>dest;
+}
+
+interface AsyncIncomingMessage extends IncomingMessage {
+  json: <T>() => Promise<T>;
+  text: () => Promise<string>;
+  buffer: () => Promise<Buffer>;
+}
+
+interface AsyncRequestOptions {
+  agent?: HttpAgent | HttpsAgent | boolean;
+  headers?: OutgoingHttpHeaders;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'CONNECT';
+  path?: string;
+  query?: Record<string, string | number | (string | number)[]>;
 }
