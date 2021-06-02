@@ -13,9 +13,7 @@ export default function asyncRequest(
   { agent, headers = {}, method = 'GET', path: basePath = '', query = {} }: AsyncRequestOptions = {},
   isImmediate = true,
 ) {
-  const { protocol, host, port, pathname: path, searchParams: searchParamsFromUrl } = new URL(basePath, url);
-  const driver = protocol === 'https:' ? httpsRequest : httpRequest;
-  const searchParams = new URLSearchParams(searchParamsFromUrl);
+  const { protocol, host, port, pathname: path, searchParams } = new URL(basePath, url);
   Object.entries(query).forEach(([key, value]) => {
     if (Array.isArray(value)) {
       value.forEach(value => searchParams.append(key, String(value)));
@@ -23,7 +21,7 @@ export default function asyncRequest(
       searchParams.append(key, String(value));
     }
   });
-  const req = driver({
+  const req = (protocol === 'https:' ? httpsRequest : httpRequest)({
     host,
     port,
     path,
@@ -33,15 +31,15 @@ export default function asyncRequest(
     agent,
   });
   const promise = new Promise<AsyncIncomingMessage>((resolve, reject) => {
-    req.once('response', response => {
+    req.once('response', response =>
       resolve(
         Object.assign(response, {
           json: <T>() => collectResponseBody(response, buffer => <T>JSON.parse(buffer.toString('utf-8'))),
           text: () => collectResponseBody(response, buffer => buffer.toString('utf-8')),
           buffer: () => collectResponseBody(response, buffer => buffer),
         }),
-      );
-    });
+      ),
+    );
     req.once('error', reject);
     req.once('abort', () => reject(new Error('request aborted')));
     req.once('timeout', () => reject(new Error('request timed out')));

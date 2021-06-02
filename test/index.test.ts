@@ -34,11 +34,8 @@ describe('async-request', () => {
     const tempFilePath = __dirname + '/test_file_temp.txt';
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     nock(url).get('/').reply(200, fileContent);
-    const req = request(url);
-    const res = await req;
-    const writeStream = fs.createWriteStream(tempFilePath);
-    res.pipe(writeStream);
-    await new Promise(resolve => writeStream.on('finish', resolve));
+    const res = await request(url);
+    await new Promise(resolve => res.pipe(fs.createWriteStream(tempFilePath).on('finish', resolve)));
     expect(fs.existsSync(tempFilePath)).toEqual(true);
     expect(fs.readFileSync(tempFilePath, 'utf-8')).toEqual(fileContent);
     fs.unlinkSync(tempFilePath);
