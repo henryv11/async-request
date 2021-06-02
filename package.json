@@ -10,8 +10,8 @@
   "files": [
     "dist/*"
   ],
-  "repository": "github:henryv11/node-request",
-  "homepage": "https://github.com/henryv11/node-request",
+  "repository": "github:henryv11/async-request",
+  "homepage": "https://github.com/henryv11/async-requestt",
   "keywords": [
     "nodejs",
     "request",

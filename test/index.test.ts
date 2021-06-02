@@ -4,18 +4,34 @@ import { pipeline } from 'stream';
 import request from '../src';
 
 describe('async-request', () => {
-  test('stream collector', async () => {
+  test('json large', async () => {
     const res = await request('https://jsonplaceholder.typicode.com/todos');
     const data = await res.json<unknown[]>();
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThan(1);
   });
 
+  test('path', async () => {
+    const url = 'http://test-url';
+    const path = '/hello/there';
+    nock(url).get(path).reply(200, 'hello');
+    const res = await request(url, { path });
+    expect(await res.text()).toEqual('hello');
+  });
+
+  test('headers', async () => {
+    const url = 'http://test-url';
+    const headers = { hello: 'there', there: 'heyhey' };
+    nock(url).get('/').matchHeader('hello', headers.hello).matchHeader('there', headers.there).reply(200, 'hello');
+    const res = await request(url, { headers });
+    expect(await res.text()).toEqual('hello');
+  });
+
   test('json', async () => {
     const url = 'http://test-url/';
     const expectedValue = { hello: 'there', bitch: ['tits'], nested: { value: true } };
     nock(url).get('/').reply(200, expectedValue);
-    const res = await request(url, undefined);
+    const res = await request(url);
     expect(await res.json()).toEqual(expectedValue);
   });
 
