@@ -1,5 +1,6 @@
 import fs from 'fs';
 import nock from 'nock';
+import { pipeline } from 'stream';
 import request from '../src';
 
 describe('async-request', () => {
@@ -35,7 +36,9 @@ describe('async-request', () => {
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     nock(url).get('/').reply(200, fileContent);
     const res = await request(url);
-    await new Promise(resolve => res.pipe(fs.createWriteStream(tempFilePath).on('finish', resolve)));
+    await new Promise<void>((resolve, reject) =>
+      pipeline(res, fs.createWriteStream(tempFilePath), error => (error ? reject(error) : resolve())),
+    );
     expect(fs.existsSync(tempFilePath)).toEqual(true);
     expect(fs.readFileSync(tempFilePath, 'utf-8')).toEqual(fileContent);
     fs.unlinkSync(tempFilePath);

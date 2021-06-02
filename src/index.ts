@@ -1,6 +1,5 @@
 import { Agent as HttpAgent, ClientRequest, IncomingMessage, OutgoingHttpHeaders, request as httpRequest } from 'http';
 import { Agent as HttpsAgent, request as httpsRequest } from 'https';
-import { Writable } from 'stream';
 
 export default function asyncRequest(url: string, options?: AsyncRequestOptions): Promise<AsyncIncomingMessage>;
 export default function asyncRequest(
@@ -34,9 +33,9 @@ export default function asyncRequest(
     req.once('response', response =>
       resolve(
         Object.assign(response, {
-          json: <T>() => collectResponseBody(response, buffer => <T>JSON.parse(buffer.toString('utf-8'))),
-          text: () => collectResponseBody(response, buffer => buffer.toString('utf-8')),
-          buffer: () => collectResponseBody(response, buffer => buffer),
+          json: <T>() => collectResponseBody(response).then(buffer => <T>JSON.parse(buffer.toString('utf-8'))),
+          text: () => collectResponseBody(response).then(buffer => buffer.toString('utf-8')),
+          buffer: () => collectResponseBody(response),
         }),
       ),
     );
@@ -51,33 +50,12 @@ export default function asyncRequest(
   return assignPromise(req, promise);
 }
 
-async function collectResponseBody<T>(res: IncomingMessage, parser: (buffer: Buffer) => T) {
-  const collector = streamCollector(parser);
-  res.pipe(collector);
-  return await collector;
-}
-
-function streamCollector<T>(parser: (buffer: Buffer) => T) {
+async function collectResponseBody(res: IncomingMessage) {
   const buffer: Uint8Array[] = [];
-  const writeStream = new Writable({
-    write(chunk, _, cb) {
-      buffer.push(chunk);
-      cb();
-    },
-  });
-  writeStream.end = (cb?: () => void) => writeStream.emit('finish', cb);
-  const promise = new Promise<T>((resolve, reject) => {
-    writeStream.once('finish', (cb: () => void = () => void 0) => {
-      try {
-        resolve(parser(Buffer.concat(buffer)));
-        cb();
-      } catch (error) {
-        reject(error);
-      }
-    });
-    writeStream.once('error', reject);
-  });
-  return assignPromise(writeStream, promise);
+  for await (const chunk of res) {
+    buffer.push(chunk);
+  }
+  return Buffer.concat(buffer);
 }
 
 function assignPromise<T, P extends Promise<V extends infer U ? U : V>, V = unknown>(dest: T, promise: P) {
