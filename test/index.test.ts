@@ -1,50 +1,57 @@
-import request from '../src';
 import nock from 'nock';
+import asyncRequest, { collectToJson } from '../src';
+import fs from 'fs';
 
-describe('node-request', () => {
-  // test('works', async () => {
-  //   interface ResponseBody {
-  //     status: string;
-  //     data: {
-  //       id: number;
-  //       employee_name: string;
-  //       employee_salay: number;
-  //       employee_age: number;
-  //       profile_image: string;
-  //     }[];
-  //   }
-  //   const response = await request<ResponseBody>({
-  //     url: 'http://dummy.restapiexample.com/api/v1/employees',
-  //   });
-  //   expect(response.body.data[0]).toBeDefined();
-  // });
-  // test('stream response', async () => {
-  //   const filePath = __dirname + '/response.txt';
-  //   const writableStream = fs.createWriteStream(filePath);
-  //   await request({ url: 'http://dummy.restapiexample.com/api/v1/employees', writeStream: writableStream });
-  //   expect(fs.existsSync(filePath)).toBe(true);
-  //   fs.unlinkSync(filePath);
-  // });
+describe('async-request', () => {
+  test('stream collector', async () => {
+    const req = asyncRequest('https://jsonplaceholder.typicode.com/todos');
+    req.end();
+    const res = await req;
+    const collector = collectToJson<unknown[]>();
+    res.pipe(collector);
+    const data = await collector;
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThan(1);
+  });
 
-  // test('fff', async () => {
-  //   const url = 'http://url.com';
-  //   nock(url).post('/hello').reply(200, {});
+  test('json', async () => {
+    const url = 'http://test-url/';
+    const expectedValue = { hello: 'there', bitch: ['tits'], nested: { value: true } };
+    nock(url).get('/').reply(200, expectedValue);
+    const req = asyncRequest(url);
+    req.end();
+    const res = await req;
+    const json = await res.json();
+    expect(json).toEqual(expectedValue);
+  });
 
-  //   const readStream = fs.createReadStream(__dirname + '/test_file.txt', 'utf-8');
+  test('stream from file', async () => {
+    const url = 'http://test-url/';
+    const filePath = __dirname + '/test_file.txt';
+    const readStream = fs.createReadStream(filePath);
+    nock(url)
+      .get('/')
+      .reply(200, (_, body) => body);
+    const req = asyncRequest(url);
+    readStream.pipe(req);
+    const res = await req;
+    expect(await res.text()).toEqual(fs.readFileSync(filePath, 'utf-8'));
+  });
 
-  //   const response = await request(url + '/hello', {
-  //     method: 'POST',
-  //     body: readStream,
-  //   });
-
-  //   console.log(response);
-  // });
-
-  test.only('bbb', async () => {
-    const url = 'http://test_url.com';
-    const path = '/path';
-    nock(url).log(console.log).get(path).reply(200, 'hello');
-    const response = await request(url, { path });
-    console.log(response.body);
+  test('stream to file', async () => {
+    const url = 'http://test-url/';
+    const filePath = __dirname + '/test_file.txt';
+    const tempFilePath = __dirname + '/test_file_temp.txt';
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    nock(url).get('/').reply(200, fileContent);
+    const req = asyncRequest(url);
+    req.end();
+    const res = await req;
+    const writeStream = fs.createWriteStream(tempFilePath);
+    res.pipe(writeStream);
+    await new Promise(resolve => writeStream.on('finish', resolve));
+    expect(fs.existsSync(tempFilePath)).toEqual(true);
+    expect(fs.readFileSync(tempFilePath, 'utf-8')).toEqual(fileContent);
+    fs.unlinkSync(tempFilePath);
   });
 });
