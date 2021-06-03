@@ -11,7 +11,7 @@
     "dist/*"
   ],
   "repository": "github:henryv11/async-request",
-  "homepage": "https://github.com/henryv11/async-requestt",
+  "homepage": "https://github.com/henryv11/async-request",
   "keywords": [
     "nodejs",
     "request",
