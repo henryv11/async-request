@@ -41,6 +41,7 @@ describe('async-request', () => {
     nock(url)
       .get('/')
       .reply(200, (_, body) => body);
+
     const res = await fs.createReadStream(filePath).pipe(request(url, { isImmediate: false }));
     expect(await res.text()).toEqual(fs.readFileSync(filePath, 'utf-8'));
   });
