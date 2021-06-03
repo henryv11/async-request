@@ -55,8 +55,7 @@ export default function asyncRequest(
     req.end();
     return promise;
   }
-  Object.setPrototypeOf(req, Object.assign(Object.getPrototypeOf(req), Promise.prototype));
-  return Object.assign(req, {
+  return Object.assign(Object.setPrototypeOf(req, mergedPrototype), {
     then: promise.then.bind(promise),
     catch: promise.catch.bind(promise),
     finally: promise.finally.bind(promise),
@@ -70,6 +69,9 @@ async function collectResponseBody(res: IncomingMessage) {
   }
   return Buffer.concat(buffer);
 }
+
+const mergedPrototype = Object.assign(ClientRequest.prototype, Promise.prototype);
+
 interface AsyncIncomingMessage extends IncomingMessage {
   json: <T>() => Promise<T>;
   text: () => Promise<string>;

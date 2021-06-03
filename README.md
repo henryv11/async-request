@@ -18,7 +18,7 @@ const buffer = await res.buffer(); // buffer
 ## Sending data
 
 ```ts
-// Resolves to http.ClientRequest & Promise<http.IncomingMessage>
+// Returns http.ClientRequest & Promise<http.IncomingMessage>
 const req = request('https://sample-url.com', { isImmediate: false });
 
 // Write to request body
