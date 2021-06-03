@@ -10,9 +10,9 @@ Utility for making requests in NodeJS using the internal HTTP / HTTPS library.
 const res = await request('https://sample-url.com');
 
 // Only one of these can be used at a time to consume the response body
-const json = await res.json(); // json
-const text = await res.text(); // string
-const buffer = await res.buffer(); // buffer
+const buffer = await res.buffer(); // reads response body to Buffer
+const text = await res.text(); // res.buffer() + Buffer.toString('utf-8')
+const json = await res.json(); // res.buffer() + Buffer.toString('utf-8') + JSON.parse
 ```
 
 ## Sending data
@@ -28,6 +28,7 @@ req.setHeader('content-length', Buffer.byteLength(body));
 // req.end has to be called to end the request if isImmediate is set to false
 req.write(body, () => req.end());
 
+// await the response
 const res = await req;
 ```
 
@@ -39,7 +40,7 @@ const res = await fs
   .pipe(request('https://sample-url.com', { isImmediate: false }));
 ```
 
-## Streaming data from request to file
+## Streaming data from response to file
 
 ```ts
 const res = await request('https://sample-url.com');
@@ -68,20 +69,15 @@ const res = await request(
   {
     // basePath, eg path: '/hello/there' => https://sample-url.com/hello/there
     path: '',
-
     // headers object, will be added to request
     headers: {},
-
     // override default agent
-    agent: new https.Agent({}),
-
+    agent: new https.Agent(),
     // query object, will be stringified and merged to url
     query: {},
-
     // request method 'GET' | 'POST' | 'PUT' etc...
     // default 'GET'
     method: 'GET',
-
     // default true, ends the request immediately
     // and returns the response promise
     // if you want to write data to request
