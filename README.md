@@ -40,13 +40,21 @@ const res = await fs
   .pipe(request('https://sample-url.com', { isImmediate: false }));
 ```
 
+### With async pipeline
+
+```ts
+const asyncPipeline = promisify(pipeline);
+const req = request('https://sample-url.com', { isImmediate: false });
+await asyncPipeline(fs.createReadStream('path/to/file.ext'), req);
+const res = await req;
+```
+
 ## Streaming data from response to file
 
 ```ts
+const asyncPipeline = promisify(pipeline);
 const res = await request('https://sample-url.com');
-await new Promise<void>((resolve, reject) =>
-  pipeline(res, fs.createWriteStream('path/to/file.ext'), error => (error ? reject(error) : resolve())),
-);
+await asyncPipeline(res, fs.createWriteStream('path/to/file.ext'));
 ```
 
 ### Could also be done with just res.pipe, just not as elegant

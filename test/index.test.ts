@@ -2,6 +2,9 @@ import fs from 'fs';
 import nock from 'nock';
 import { pipeline } from 'stream';
 import request from '../src';
+import { promisify } from 'util';
+
+const asyncPipeline = promisify(pipeline);
 
 describe('async-request', () => {
   test('json large', async () => {
@@ -42,7 +45,9 @@ describe('async-request', () => {
       .get('/')
       .reply(200, (_, body) => body);
 
-    const res = await fs.createReadStream(filePath).pipe(request(url, { isImmediate: false }));
+    const req = request(url, { isImmediate: false });
+    await asyncPipeline(fs.createReadStream(filePath), req);
+    const res = await req;
     expect(await res.text()).toEqual(fs.readFileSync(filePath, 'utf-8'));
   });
 
@@ -53,9 +58,7 @@ describe('async-request', () => {
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     nock(url).get('/').reply(200, fileContent);
     const res = await request(url);
-    await new Promise<void>((resolve, reject) =>
-      pipeline(res, fs.createWriteStream(tempFilePath), error => (error ? reject(error) : resolve())),
-    );
+    await asyncPipeline(res, fs.createWriteStream(tempFilePath));
     expect(fs.existsSync(tempFilePath)).toEqual(true);
     expect(fs.readFileSync(tempFilePath, 'utf-8')).toEqual(fileContent);
     fs.unlinkSync(tempFilePath);
