@@ -1,16 +1,24 @@
 import { Agent as HttpAgent, ClientRequest, IncomingMessage, OutgoingHttpHeaders, request as httpRequest } from 'http';
 import { Agent as HttpsAgent, request as httpsRequest } from 'https';
 
-export default function asyncRequest(url: string, options?: AsyncRequestOptions): Promise<AsyncIncomingMessage>;
 export default function asyncRequest(
   url: string,
-  options: AsyncRequestOptions | undefined,
-  isImmediate: false,
+  options?: AsyncRequestOptions & { isImmediate?: true },
+): Promise<AsyncIncomingMessage>;
+export default function asyncRequest(
+  url: string,
+  options: AsyncRequestOptions & { isImmediate: false },
 ): Promise<AsyncIncomingMessage> & ClientRequest;
 export default function asyncRequest(
   url: string,
-  { agent, headers = {}, method = 'GET', path: basePath = '', query = {} }: AsyncRequestOptions = {},
-  isImmediate = true,
+  {
+    agent,
+    headers = {},
+    method = 'GET',
+    path: basePath = '',
+    query = {},
+    isImmediate = true,
+  }: AsyncRequestOptions = {},
 ) {
   const { protocol, host, port, pathname: path, searchParams } = new URL(basePath, url);
   Object.entries(query).forEach(([key, value]) => {
@@ -47,7 +55,12 @@ export default function asyncRequest(
     req.end();
     return promise;
   }
-  return assignPromise(req, promise);
+  Object.setPrototypeOf(req, Object.assign(Object.getPrototypeOf(req), Promise.prototype));
+  return Object.assign(req, {
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  });
 }
 
 async function collectResponseBody(res: IncomingMessage) {
@@ -57,15 +70,6 @@ async function collectResponseBody(res: IncomingMessage) {
   }
   return Buffer.concat(buffer);
 }
-
-function assignPromise<T, P extends Promise<V extends infer U ? U : V>, V = unknown>(dest: T, promise: P) {
-  Object.setPrototypeOf(dest, Object.assign(Object.getPrototypeOf(dest), Promise.prototype));
-  (<T & P>dest).then = promise.then.bind(promise);
-  (<T & P>dest).catch = promise.catch.bind(promise);
-  (<T & P>dest).finally = promise.finally.bind(promise);
-  return <T & P>dest;
-}
-
 interface AsyncIncomingMessage extends IncomingMessage {
   json: <T>() => Promise<T>;
   text: () => Promise<string>;
@@ -78,4 +82,5 @@ interface AsyncRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'CONNECT';
   path?: string;
   query?: Record<string, string | number | (string | number)[]>;
+  isImmediate?: boolean;
 }
