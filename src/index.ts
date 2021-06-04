@@ -3,31 +3,14 @@ import { Agent as HttpsAgent, request as httpsRequest } from 'https';
 
 export default function asyncRequest(
   url: string,
-  options?: AsyncRequestOptions & { isImmediate?: true },
-): Promise<AsyncIncomingMessage>;
-export default function asyncRequest(
-  url: string,
-  options: AsyncRequestOptions & { isImmediate: false },
-): Promise<AsyncIncomingMessage> & ClientRequest;
-export default function asyncRequest(
-  url: string,
-  {
-    agent,
-    headers = {},
-    method = 'GET',
-    path: basePath = '',
-    query = {},
-    isImmediate = true,
-  }: AsyncRequestOptions = {},
-) {
+  { agent, headers = {}, method = 'GET', path: basePath = '', query = {} }: AsyncRequestOptions = {},
+): AsyncClientRequest {
   const { protocol, host, port, pathname: path, searchParams } = new URL(basePath, url);
-  Object.entries(query).forEach(([key, value]) => {
-    if (Array.isArray(value)) {
-      value.forEach(value => searchParams.append(key, String(value)));
-    } else {
-      searchParams.append(key, String(value));
-    }
-  });
+  Object.entries(query).forEach(([key, value]) =>
+    Array.isArray(value)
+      ? value.forEach(value => searchParams.append(key, String(value)))
+      : searchParams.append(key, String(value)),
+  );
   const req = (protocol === 'https:' ? httpsRequest : httpRequest)({
     host,
     port,
@@ -37,7 +20,7 @@ export default function asyncRequest(
     searchParams,
     agent,
   });
-  const promise = new Promise<AsyncIncomingMessage>((resolve, reject) => {
+  const responsePromise = new Promise<AsyncIncomingMessage>((resolve, reject) => {
     req.once('response', response =>
       resolve(
         Object.assign(response, {
@@ -51,14 +34,27 @@ export default function asyncRequest(
     req.once('abort', () => reject(new Error('request aborted')));
     req.once('timeout', () => reject(new Error('request timed out')));
   });
-  if (isImmediate) {
-    req.end();
-    return promise;
-  }
+  const endRequest = req.end.bind(req);
   return Object.assign(Object.setPrototypeOf(req, mergedPrototype), {
-    then: promise.then.bind(promise),
-    catch: promise.catch.bind(promise),
-    finally: promise.finally.bind(promise),
+    then: responsePromise.then.bind(responsePromise),
+    catch: responsePromise.catch.bind(responsePromise),
+    finally: responsePromise.finally.bind(responsePromise),
+    end() {
+      console.log(arguments);
+      let cb = () => void 0;
+      let data = '';
+      let encoding: BufferEncoding = 'utf-8';
+      if (arguments.length) {
+        if (typeof arguments[0] === 'function') {
+          [cb] = arguments;
+        } else if (typeof arguments[0] === 'string') {
+          [data, cb = () => void 0] = arguments;
+        } else if (typeof arguments[2] === 'function') {
+          [data, encoding, cb = () => void 0] = arguments;
+        }
+      }
+      return new Promise(resolve => endRequest(data, encoding, () => (resolve(responsePromise), cb())));
+    },
   });
 }
 
@@ -84,5 +80,13 @@ interface AsyncRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'CONNECT';
   path?: string;
   query?: Record<string, string | number | (string | number)[]>;
-  isImmediate?: boolean;
 }
+
+type AsyncClientRequest = Omit<ClientRequest, 'end'> &
+  Promise<AsyncIncomingMessage> & {
+    end: (
+      arg1?: (() => void) | string | Uint8Array,
+      arg2?: (() => void) | BufferEncoding,
+      arg3?: () => void,
+    ) => Promise<AsyncIncomingMessage>;
+  };
