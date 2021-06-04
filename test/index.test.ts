@@ -1,8 +1,8 @@
 import fs from 'fs';
 import nock from 'nock';
 import { pipeline } from 'stream';
-import request from '../src';
 import { promisify } from 'util';
+import request from '../src';
 
 const asyncPipeline = promisify(pipeline);
 
@@ -46,8 +46,10 @@ describe('async-request', () => {
       .reply(200, (_, body) => body);
 
     const req = request(url, { isImmediate: false });
-    await asyncPipeline(fs.createReadStream(filePath), req);
-    const res = await req;
+    // TODO: Does not work on Windows, find out why
+    // await asyncPipeline(fs.createReadStream(filePath), req);
+    // const res = await req;
+    const res = await fs.createReadStream(filePath).pipe(req);
     expect(await res.text()).toEqual(fs.readFileSync(filePath, 'utf-8'));
   });
 

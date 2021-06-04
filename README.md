@@ -42,6 +42,8 @@ const res = await fs
 
 ### With async pipeline
 
+⚠️ **WARNING!** Does not work on windows
+
 ```ts
 const asyncPipeline = promisify(pipeline);
 const req = request('https://sample-url.com', { isImmediate: false });
