@@ -1,27 +1,25 @@
 import { Agent as HttpAgent, ClientRequest, IncomingMessage, OutgoingHttpHeaders, request as httpRequest } from 'http';
 import { Agent as HttpsAgent, request as httpsRequest } from 'https';
 
-export default function asyncRequest(
-  url: string,
+const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD', 'CONNECT'] as const;
+
+function asyncRequest(
+  urlString: string,
   { agent, headers = {}, method = 'GET', path: basePath = '', query = {} }: AsyncRequestOptions = {},
 ): AsyncClientRequest {
-  const { protocol, host, port, pathname: path, searchParams } = new URL(basePath, url);
+  const url = new URL(basePath, urlString);
   Object.entries(query).forEach(([key, value]) =>
     Array.isArray(value)
-      ? value.forEach(value => searchParams.append(key, String(value)))
-      : searchParams.append(key, String(value)),
+      ? value.forEach(value => url.searchParams.append(key, String(value)))
+      : url.searchParams.append(key, String(value)),
   );
-  const req = (protocol === 'https:' ? httpsRequest : httpRequest)({
-    host,
-    port,
-    path,
+  const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
     method,
     headers,
-    searchParams,
     agent,
   });
   const responsePromise = new Promise<AsyncIncomingMessage>((resolve, reject) => {
-    req.once('response', response =>
+    request.once('response', response =>
       resolve(
         Object.assign(response, {
           json: <T>() => collectResponseBody(response).then(buffer => <T>JSON.parse(buffer.toString('utf-8'))),
@@ -30,33 +28,34 @@ export default function asyncRequest(
         }),
       ),
     );
-    req.once('error', reject);
-    req.once('abort', () => reject(new Error('request aborted')));
-    req.once('timeout', () => reject(new Error('request timed out')));
+    request.once('error', reject);
+    request.once('abort', () => reject(new Error('request aborted')));
+    request.once('timeout', () => reject(new Error('request timed out')));
   });
-  const endRequest = req.end.bind(req);
-  return Object.assign(Object.setPrototypeOf(req, mergedPrototype), {
+  const endRequest = request.end.bind(request);
+  return Object.assign(Object.setPrototypeOf(request, mergedPrototype), {
     then: responsePromise.then.bind(responsePromise),
     catch: responsePromise.catch.bind(responsePromise),
     finally: responsePromise.finally.bind(responsePromise),
     end() {
-      console.log(arguments);
-      let cb = () => void 0;
-      let data = '';
-      let encoding: BufferEncoding = 'utf-8';
-      if (arguments.length) {
-        if (typeof arguments[0] === 'function') {
-          [cb] = arguments;
-        } else if (typeof arguments[0] === 'string') {
-          [data, cb = () => void 0] = arguments;
-        } else if (typeof arguments[2] === 'function') {
-          [data, encoding, cb = () => void 0] = arguments;
-        }
-      }
-      return new Promise(resolve => endRequest(data, encoding, () => (resolve(responsePromise), cb())));
+      // eslint-disable-next-line prefer-rest-params
+      endRequest(...arguments);
+      return new Promise((resolve, reject) => {
+        request.once('error', reject);
+        request.once('finish', () => resolve(responsePromise));
+      });
     },
   });
 }
+
+export default Object.assign(
+  asyncRequest,
+  METHODS.reduce((methodShorthands, method: Method) => {
+    methodShorthands[<Lowercase<Method>>method.toLowerCase()] = (url, options) =>
+      asyncRequest(url, { method, ...options });
+    return methodShorthands;
+  }, <Record<Lowercase<Method>, (url: string, options?: Omit<AsyncRequestOptions, 'method'>) => AsyncClientRequest>>{}),
+);
 
 async function collectResponseBody(res: IncomingMessage) {
   const buffer: Uint8Array[] = [];
@@ -68,6 +67,8 @@ async function collectResponseBody(res: IncomingMessage) {
 
 const mergedPrototype = Object.assign(ClientRequest.prototype, Promise.prototype);
 
+type Method = typeof METHODS[number];
+
 interface AsyncIncomingMessage extends IncomingMessage {
   json: <T>() => Promise<T>;
   text: () => Promise<string>;
@@ -77,16 +78,14 @@ interface AsyncIncomingMessage extends IncomingMessage {
 interface AsyncRequestOptions {
   agent?: HttpAgent | HttpsAgent | boolean;
   headers?: OutgoingHttpHeaders;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'CONNECT';
+  method?: Method;
   path?: string;
   query?: Record<string, string | number | (string | number)[]>;
 }
 
 type AsyncClientRequest = Omit<ClientRequest, 'end'> &
   Promise<AsyncIncomingMessage> & {
-    end: (
-      arg1?: (() => void) | string | Uint8Array,
-      arg2?: (() => void) | BufferEncoding,
-      arg3?: () => void,
-    ) => Promise<AsyncIncomingMessage>;
+    end(cb?: () => void): Promise<AsyncIncomingMessage>;
+    end(data: string | Uint8Array, cb?: () => void): Promise<AsyncIncomingMessage>;
+    end(str: string, encoding?: BufferEncoding, cb?: () => void): Promise<AsyncIncomingMessage>;
   };

@@ -5,9 +5,12 @@ Utility for making requests in NodeJS using the internal HTTP / HTTPS library.
 ## Basic request
 
 ```ts
-// Resolves to http.IncomingMessage
-// with some additional utilities to read the response body
-const res = await request('https://sample-url.com');
+// returns AsyncClientRequest & Promise<AsyncIncomingMessage>
+const req = request('https://sample-url.com');
+
+// calling .end() will end the request and return Promise<AsyncIncomingMessage>
+// without calling .end(), the Promise<AsyncIncomingMessage> will never resolve
+const res = await req.end();
 
 // Only one of these can be used at a time to consume the response body
 const buffer = await res.buffer(); // reads response body to Buffer
@@ -15,29 +18,39 @@ const text = await res.text(); // res.buffer() + Buffer.toString('utf-8')
 const json = await res.json(); // res.buffer() + Buffer.toString('utf-8') + JSON.parse
 ```
 
+## Shorthands
+
+```ts
+await request.get('https://sample-url.com').end();
+await request.post('https://sample-url.com').end();
+await request.put('https://sample-url.com').end();
+await request.delete('https://sample-url.com').end();
+await request.options('https://sample-url.com').end();
+await request.head('https://sample-url.com').end();
+await request.connect('https://sample-url.com').end();
+```
+
 ## Sending data
 
 ```ts
-// Returns http.ClientRequest & Promise<http.IncomingMessage>
-const req = request('https://sample-url.com', { isImmediate: false });
-
-// Write to request body
 const body = JSON.stringify({});
-req.setHeader('content-type', 'application/json');
-req.setHeader('content-length', Buffer.byteLength(body));
-// req.end has to be called to end the request if isImmediate is set to false
-req.write(body, () => req.end());
-
-// await the response
-const res = await req;
+const res = await request
+  .post('https://sample-url.com', {
+    headers: {
+      'content-type': 'application/json',
+      'content-length': Buffer.byteLength(body),
+    },
+  })
+  .end(body);
 ```
 
 ## Streaming data from file to request
 
 ```ts
-const res = await fs
-  .createReadStream('path/to/file.ext')
-  .pipe(request('https://sample-url.com', { isImmediate: false }));
+// NOTICE: .end() is not called, as piping to readStream calls it automatically
+const req = request('https://sample-url.com');
+fs.createReadStream('path/to/file.ext').pipe(req);
+const res = await req;
 ```
 
 ### With async pipeline
@@ -46,7 +59,7 @@ const res = await fs
 
 ```ts
 const asyncPipeline = promisify(pipeline);
-const req = request('https://sample-url.com', { isImmediate: false });
+const req = request('https://sample-url.com');
 await asyncPipeline(fs.createReadStream('path/to/file.ext'), req);
 const res = await req;
 ```
@@ -62,7 +75,7 @@ await asyncPipeline(res, fs.createWriteStream('path/to/file.ext'));
 ### Could also be done with just res.pipe, just not as elegant
 
 ```ts
-const res = await request('https://sample-url.com');
+const res = await request('https://sample-url.com').end();
 res.pipe(fs.createWriteStream('path/to/file.ext'));
 // Make sure that writing the response body to file is finished
 // after following line
@@ -88,11 +101,6 @@ const res = await request(
     // request method 'GET' | 'POST' | 'PUT' etc...
     // default 'GET'
     method: 'GET',
-    // default true, ends the request immediately
-    // and returns the response promise
-    // if you want to write data to request
-    // set to false, write data, and end the request
-    isImmediate: true,
   },
 );
 ```

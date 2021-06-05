@@ -25,7 +25,7 @@ describe('async-request', () => {
   test('json large', async () => {
     const res = await request('https://jsonplaceholder.typicode.com/todos').end();
     const data = await res.json<unknown[]>();
-    expect(Array.isArray(data)).toBe(true);
+    expect(Array.isArray(data)).toEqual(true);
     expect(data.length).toBeGreaterThan(1);
   });
 
@@ -34,7 +34,7 @@ describe('async-request', () => {
     const path = '/hello/there';
     nock(url).get(path).reply(200, 'hello');
     const res = await request(url, { path }).end();
-    expect(await res.text()).toBe('hello');
+    expect(await res.text()).toEqual('hello');
   });
 
   test('headers', async () => {
@@ -42,7 +42,7 @@ describe('async-request', () => {
     const headers = { hello: 'there', there: 'heyhey' };
     nock(url).get('/').matchHeader('hello', headers.hello).matchHeader('there', headers.there).reply(200, 'hello');
     const res = await request(url, { headers }).end();
-    expect(await res.text()).toBe('hello');
+    expect(await res.text()).toEqual('hello');
   });
 
   test('json', async () => {
@@ -79,8 +79,8 @@ describe('async-request', () => {
     nock(url).get('/').reply(200, fileContent);
     const res = await request(url).end();
     await asyncPipeline(res, fs.createWriteStream(tempFilePath));
-    expect(fs.existsSync(tempFilePath)).toBe(true);
-    expect(fs.readFileSync(tempFilePath, 'utf-8')).toBe(fileContent);
+    expect(fs.existsSync(tempFilePath)).toEqual(true);
+    expect(fs.readFileSync(tempFilePath, 'utf-8')).toEqual(fileContent);
     fs.unlinkSync(tempFilePath);
   });
 });
