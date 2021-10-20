@@ -5,45 +5,50 @@ const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD', 'CONNECT'] a
 
 function asyncRequest(
   urlString: string,
-  { agent, headers = {}, method = 'GET', path: basePath = '', query = {} }: AsyncRequestOptions = {},
-): AsyncClientRequest {
+  { agent, headers = {}, method = 'GET', path: basePath = '', query = {}, timeout }: AsyncRequestOptions = {},
+) {
   const url = new URL(basePath, urlString);
   Object.entries(query).forEach(([key, value]) =>
     Array.isArray(value)
       ? value.forEach(value => url.searchParams.append(key, String(value)))
       : url.searchParams.append(key, String(value)),
   );
-  const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
+  const req = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
     method,
     headers,
     agent,
+    timeout,
   });
-  const responsePromise = new Promise<AsyncIncomingMessage>((resolve, reject) => {
-    request.once('response', response =>
-      resolve(
-        Object.assign(response, {
-          json: <T>() => collectResponseBody(response).then(buffer => <T>JSON.parse(buffer.toString('utf-8'))),
-          text: () => collectResponseBody(response).then(buffer => buffer.toString('utf-8')),
-          buffer: () => collectResponseBody(response),
-        }),
-      ),
-    );
-    request.once('error', reject);
-    request.once('abort', () => reject(new Error('request aborted')));
-    request.once('timeout', () => reject(new Error('request timed out')));
-  });
-  const endRequest = request.end.bind(request);
-  return Object.assign(Object.setPrototypeOf(request, mergedPrototype), {
-    then: responsePromise.then.bind(responsePromise),
-    catch: responsePromise.catch.bind(responsePromise),
-    finally: responsePromise.finally.bind(responsePromise),
+  const res = Object.assign(
+    new Promise<AsyncIncomingMessage>((resolve, reject) => {
+      req.once('response', res =>
+        resolve(
+          Object.assign(res, {
+            json: <T>() => readBody(res).then(buf => <T>JSON.parse(buf.toString('utf-8'))),
+            text: () => readBody(res).then(buf => buf.toString('utf-8')),
+            buffer: () => readBody(res),
+          }),
+        ),
+      );
+      req.once('error', reject);
+      req.once('abort', () => reject(new Error('request aborted')));
+      req.once('timeout', () => reject(new Error('request timed out')));
+    }),
+    {
+      json: <T>() => res.then(res => res.json<T>()),
+      text: () => res.then(res => res.text()),
+      buffer: () => res.then(res => res.buffer()),
+    },
+  );
+  const end = req.end.bind(req);
+  return <AsyncClientRequest>Object.assign(req, {
+    then: res.then.bind(res),
+    catch: res.catch.bind(res),
+    finally: res.finally.bind(res),
     end() {
       // eslint-disable-next-line prefer-rest-params
-      endRequest(...arguments);
-      return new Promise((resolve, reject) => {
-        request.once('error', reject);
-        request.once('finish', () => resolve(responsePromise));
-      });
+      end(...arguments);
+      return res;
     },
   });
 }
@@ -57,7 +62,7 @@ export default Object.assign(
   }, <Record<Lowercase<Method>, (url: string, options?: Omit<AsyncRequestOptions, 'method'>) => AsyncClientRequest>>{}),
 );
 
-async function collectResponseBody(res: IncomingMessage) {
+async function readBody(res: IncomingMessage) {
   const buffer: Uint8Array[] = [];
   for await (const chunk of res) {
     buffer.push(chunk);
@@ -65,15 +70,15 @@ async function collectResponseBody(res: IncomingMessage) {
   return Buffer.concat(buffer);
 }
 
-const mergedPrototype = Object.assign(ClientRequest.prototype, Promise.prototype);
-
 type Method = typeof METHODS[number];
 
-interface AsyncIncomingMessage extends IncomingMessage {
+interface ConsumeBodyMethods {
   json: <T>() => Promise<T>;
   text: () => Promise<string>;
   buffer: () => Promise<Buffer>;
 }
+
+interface AsyncIncomingMessage extends IncomingMessage, ConsumeBodyMethods {}
 
 interface AsyncRequestOptions {
   agent?: HttpAgent | HttpsAgent | boolean;
@@ -81,11 +86,12 @@ interface AsyncRequestOptions {
   method?: Method;
   path?: string;
   query?: Record<string, string | number | (string | number)[]>;
+  timeout?: number;
 }
 
 type AsyncClientRequest = Omit<ClientRequest, 'end'> &
   Promise<AsyncIncomingMessage> & {
-    end(cb?: () => void): Promise<AsyncIncomingMessage>;
-    end(data: string | Uint8Array, cb?: () => void): Promise<AsyncIncomingMessage>;
-    end(str: string, encoding?: BufferEncoding, cb?: () => void): Promise<AsyncIncomingMessage>;
+    end(cb?: () => void): Promise<AsyncIncomingMessage> & ConsumeBodyMethods;
+    end(data: string | Uint8Array, cb?: () => void): Promise<AsyncIncomingMessage> & ConsumeBodyMethods;
+    end(str: string, encoding?: BufferEncoding, cb?: () => void): Promise<AsyncIncomingMessage> & ConsumeBodyMethods;
   };
